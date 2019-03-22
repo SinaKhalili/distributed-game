@@ -33,6 +33,8 @@ canvasList = []
 CurrentGameBoard = []
 AreaList = []
 lock = threading.BoundedSemaphore(value=1)
+
+serverLock = threading.BoundedSemaphore(value=1)
  
 
 class GameStateObj:
@@ -55,24 +57,25 @@ def sendConstantUpdatesToClient(conn,ip,port):
             conn.send(data)
 
 
+
  
 def ReceiveUpdatesFromClient(conn,ip,port): 
     while True : 
             data = conn.recv(4048) 
+            #check that field other wise.
             message = GameStateObj()
             Message = pickle.loads(data)
             print ("Server received data:",Message.color, Message.rowIndex,Message.columnIndex, Message.canvasNumber)
             lock.acquire()
             CurrentGameBoard[int(Message.canvasNumber)-1].color = Message.color
-            
-            canvasList[int(Message.canvasNumber)-1].config(background = Message.color)
-
+            CurrentGameBoard[int(Message.canvasNumber)-1].UserID = Message.UserID
+            canvasList[int(Message.canvasNumber)-1].config(background = Message.color,state = Message.state)
             # if not user update
             lock.release()
             
             
 
-class CLientUpdatesFromServer(threading.Thread): 
+class UpdateClientFromServer(threading.Thread): 
  
     def __init__(self,ip,port): 
         threading.Thread.__init__(self) 
@@ -81,14 +84,16 @@ class CLientUpdatesFromServer(threading.Thread):
         print ("[+] Sending To " + ip + ":" + str(port) )
     
     def run(self): 
-        while True : 
-            
+        while True :       
+            #if timemout and your the next guy. release the lock.
             data = tcpClientA.recv(BUFFER_SIZE)
             CurrentGameBoard = pickle.loads(data)
             for i in range(len(CurrentGameBoard)):
-                canvasList[i-1].config(background = CurrentGameBoard[i-1].color)#, state = CurrentGameBoard[i-1].state)
-                #if (CurrentGameBoard[i-1].UserID == myUserID):
-
+                if (CurrentGameBoard[i-1].UserID == myUserID and CurrentGameBoard[i-1].color=="yellow" and CurrentGameBoard[i-1].state=="disabled"):
+                    continue
+                else:
+                    canvasList[i-1].config(background = CurrentGameBoard[i-1].color, state = CurrentGameBoard[i-1].state)#, state = CurrentGameBoard[i-1].state)
+                    
                 # if not your id lock it.
 
             # send current game state every someodd seconds
@@ -97,7 +102,8 @@ class CLientUpdatesFromServer(threading.Thread):
 
 
 def TurnClientIntoServer(isServer):
-    #while(True):
+    while(True):
+        serverLock.acquire()
         if(isServer):
             #tcpClientA.shutdown()
             #tcpClientA.close()
@@ -120,10 +126,23 @@ def TurnClientIntoServer(isServer):
                         _thread.start_new_thread(ReceiveUpdatesFromClient,(conn,ip,port,))
                         _thread.start_new_thread(sendConstantUpdatesToClient,(conn,ip,port,))
                         print("newConnection")
+                        # wait for connection receive then send to teverone. 
+                        #list of ip connections
+                        # with self, send that to everyone. 
+                        # from list if server is down. timeout
+                        # if you are next and alive
+                        # ping to be alive. 
+                        # if not alive remove
+                        # run server code
+                        # then clients connect to server, all other code 
+                        # is the same. 
                     except:
                         print ("Error: unable to start thread")
                     players = players+1
-            #break
+            if(isServer):
+                break
+            else:
+                continue
        
         #threads.append(newthread)
         
@@ -141,25 +160,50 @@ def xy(event):
           
 def addLine(event):
     global lastx, lasty
-    #if event.widget.cget('state') != 'disabled':   
+    if event.widget.cget('state') != 'disabled':   
+        id = str(event.widget)
+        position =0
+        if(len(id)==9):
+            position = int(id[8])
+        if(len(id)==10):
+            position = int(id[8])*10 + int(id[9])
+        if(len(id)==8):
+            position = 1
+        print("Position", position)
+        if (isServer):
+            lock.acquire()
+            CurrentGameBoard[int(position)-1].color = "yellow" 
+            CurrentGameBoard[int(position)-1].state = "disabled"
+            CurrentGameBoard[int(position)-1].UserID = myUserID
+            # add user
+            lock.release()
+
+        elif (not isServer):
+            SquareState.color = "yellow"
+            SquareState.state = "disabled"
+            SquareState.canvasNumber = position
+            SquareState.UserID = myUserID
+            data = pickle.dumps(SquareState)
+            tcpClientA.send(data) 
         #event.widget.config(bg="yellow", state="disabled")
         #Constraints so that when calculating pixesl (Not yet implemented) coloring off the square doesn't count
-    if event.x > squareSize:
-        event.x = squareSize
-    if event.x < 0:
-        event.x = 0
-    if event.y > squareSize:
-        event.y = squareSize
-    if event.y < 0:
-        event.y = 0
-    #Creates a line in the clicked on widget
-    event.widget.create_line((lastx, lasty, event.x, event.y), width=5)
-    lastx, lasty = event.x, event.y
+        if event.x > squareSize:
+            event.x = squareSize
+        if event.x < 0:
+            event.x = 0
+        if event.y > squareSize:
+            event.y = squareSize
+        if event.y < 0:
+            event.y = 0
+        #Creates a line in the clicked on widget
+        event.widget.create_line((lastx, lasty, event.x, event.y), width=5)
+        lastx, lasty = event.x, event.y
 
-    print( (lastx, lasty) )
-    global AreaList
-    AreaList.append(tuple((lastx, lasty)))
-    AreaList = list(set(AreaList))
+        print( (lastx, lasty) )
+        global AreaList
+        AreaList.append(tuple((lastx, lasty)))
+        AreaList = list(set(AreaList))
+
 
 def pressLock(event):
     if event.widget.cget('state') != 'disabled':
@@ -175,15 +219,16 @@ def pressLock(event):
         if (isServer):
             lock.acquire()
             CurrentGameBoard[int(position)-1].color = "yellow" 
-            #CurrentGameBoard[int(position)-1].state = "disabled"
+            CurrentGameBoard[int(position)-1].state = "disabled"
+            CurrentGameBoard[int(position)-1].UserID = myUserID
             # add user
             lock.release()
 
         elif (not isServer):
             SquareState.color = "yellow"
-            #SquareState.state = "disabled"
-            # add user
+            SquareState.state = "disabled"
             SquareState.canvasNumber = position
+            SquareState.UserID = myUserID
             data = pickle.dumps(SquareState)
             tcpClientA.send(data) 
 
@@ -218,29 +263,36 @@ def doneStroke(event):
                 lock.acquire()
                 CurrentGameBoard[int(position)-1].color = color
                 CurrentGameBoard[int(position)-1].state = "disabled"
+                CurrentGameBoard[int(position)-1].UserID = myUserID
+               
                 lock.release()
             elif (not isServer):
                 SquareState.color = color
                 SquareState.state = "disabled"
                 SquareState.canvasNumber = position
+                SquareState.UserID = myUserID
                 data = pickle.dumps(SquareState)
                 tcpClientA.send(data) 
 
            
         #add delay here to sync time
-        '''
+        
         elif isServer:
                 lock.acquire()
                 CurrentGameBoard[int(position)-1].color = "grey" 
                 CurrentGameBoard[int(position)-1].state = "normal"
+                CurrentGameBoard[int(position)-1].UserID = ""
                 lock.release()
+                 # disbale the color for all other users
+                # that user though does not get diabled
 
         elif (not isServer):
                 SquareState.color = "grey"
                 SquareState.state = "normal"
+                SquareState.UserID = ""
                 data = pickle.dumps(SquareState)
                 tcpClientA.send(data) 
-        '''
+        
 
         print (len(AreaList))
         del AreaList[:]
@@ -295,6 +347,9 @@ for r in range(rows):
         state.color = "grey"
         state.state = "normal"
         CurrentGameBoard.append(state)
+        # list of names to put as next thing
+        # if timeout set that to the server
+        # set
 
 
 #Todo: add more players
@@ -302,8 +357,9 @@ for r in range(rows):
 
         
 if(not isServer):
-    UpdateBoard = CLientUpdatesFromServer(host, port)
+    UpdateBoard = UpdateClientFromServer(host, port)
     UpdateBoard.start()
+    serverLock.acquire
 
 
 _thread.start_new_thread(TurnClientIntoServer,(isServer,))
