@@ -50,7 +50,7 @@ global lock
 global IPList
 global startLock
 global ReceiveQueue
-global time
+global genesis
 global rtt 
 ReceiveQueue = []
 notConnected = True
@@ -209,6 +209,8 @@ def ReceiveUpdatesFromClient(conn,ip,port):
 				if ("gameState" in data):
 					#message = GameStateObj()
 					Message = data["gameState"]
+					print( "Client time is " +  data["Time"] ) 
+
 					print ("Server received data:",Message.color, Message.canvasNumber,Message.UserID)
 					if(Message.color=="yellow" and Message.state == "disabled"):
 						ReceiveQueue.append(data)
@@ -264,6 +266,7 @@ class UpdateClientFromServer(threading.Thread):
 		global tcpClientA
 		global CurrentGameBoard
 		global IPList,penWidth,rows,filledThreshold,myUserID
+		global genesis
 
 		while True :  
 			try:
@@ -291,6 +294,8 @@ class UpdateClientFromServer(threading.Thread):
 
 	
 				elif( "initialise" in data):
+
+					genesis = time.time()
 					
 					print("initialise", data)
 					IPList = data["IPList"]
@@ -378,7 +383,7 @@ def TurnClientIntoServer():
 
 		if(isServer):
 			print("sending initiliaze data")
-			global penWidth,rows,filledThreshold,myUserID
+			global penWidth,rows,filledThreshold,myUserID, genesis
 			ownIP = socket.gethostbyname(socket.gethostname())
 			#inpput here
 			#print("Enter Pen width(1-10)")
@@ -394,7 +399,7 @@ def TurnClientIntoServer():
 			myUserID =0
 
 			toSend = {"initialise":1,"IPList":IPList,"Penwidth":penWidth,"rows":rows,"threshold":filledThreshold}
-
+			genesis = time.time()
 			print(rows)
 			print(penWidth)
 			print(filledThreshold)
@@ -421,9 +426,7 @@ def calculateRTT(conn):
 	global rtt
 	global isServer
 	if(isServer): 
-		currentTime = time.time()
-		#dictTime = {"RTT":currentTime}
-		conn.send(str(currentTime))
+		conn.send(b'DEADBEEF')
 	else:
 		currTime = time.time()
 		conn.recv(1024)
@@ -462,7 +465,7 @@ def xy(event):
 			ServerSquareState.state = "disabled"
 			ServerSquareState.canvasNumber = position
 			ServerSquareState.UserID = myUserID
-			currentTime = time.time()
+			currentTime = time.time() - genesis
 			#add some delay time aswell. 
 			message = {"gameState":ServerSquareState,"Time":currentTime}
 			PriorityServerUpdate(message)
@@ -479,7 +482,7 @@ def xy(event):
 			SquareState.state = "disabled"
 			SquareState.canvasNumber = position
 			SquareState.UserID = myUserID
-			currentTime = time.time()
+			currentTime = time.time() - genesis - rtt
 			# time stamp for yellow
 			message = {"gameState":SquareState,"Time":currentTime}
 			data = pickle.dumps(message)
@@ -664,9 +667,8 @@ if (not isServer):
 	#
 	print("enter Servers IP:")
 	#IP = input()
-
 	#IPList.append('192.168.0.10')
-	IPList.append("192.168.137.237")
+	IPList.append("207.23.181.250")
 	_thread.start_new_thread(HandleReconnectToAnotherServer,())
 	UpdateBoard = UpdateClientFromServer()
 	UpdateBoard.start()
