@@ -209,7 +209,7 @@ def ReceiveUpdatesFromClient(conn,ip,port):
 				if ("gameState" in data):
 					#message = GameStateObj()
 					Message = data["gameState"]
-					print( "Client time is " +  data["Time"] ) 
+					#print( "Client time is " +  str(data["Time"]) ) 
 
 					print ("Server received data:",Message.color, Message.canvasNumber,Message.UserID)
 					if(Message.color=="yellow" and Message.state == "disabled"):
@@ -357,7 +357,7 @@ def TurnClientIntoServer():
 			print("binded waiting for players")
 			global number
 			players = 0 
-			number = 2
+			number = 1
 			
 			global firstConnection
 			if (not firstConnection):
